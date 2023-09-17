@@ -7,18 +7,26 @@ import (
 
 func main() {
 	const root = "."
+	const appDir = "./app"
 	const port = "8080"
 
 	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.Dir(root)))
+	mux.Handle("/app/", http.StripPrefix("/app/", http.FileServer(http.Dir(appDir))))
+	mux.HandleFunc("/healthz", readinessEndpointHandler)
 	corsMux := middlewareCors(mux)
 	server := &http.Server{
 		Addr:    ":" + port,
 		Handler: corsMux,
 	}
 
-	log.Printf("Serving files from %s on port: %s\n", root, port)
+	log.Printf("Serving files from %s on port: %s\n", appDir, port)
 	server.ListenAndServe()
+}
+
+func readinessEndpointHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Add("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(http.StatusText(http.StatusOK)))
 }
 
 func middlewareCors(next http.Handler) http.Handler {
