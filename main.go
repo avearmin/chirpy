@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -95,18 +96,16 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type returnVals struct {
-		Valid bool   `json:"valid"`
-		Error string `json:"error"`
+		CleanedBody string `json:"cleaned_body"`
 	}
 
 	respBody := returnVals{}
 	if len(params.Body) > 140 {
-		respBody.Error = "Chirp is too long"
 		w.WriteHeader(400)
-	} else {
-		respBody.Valid = true
-		w.WriteHeader(200)
+		return
 	}
+	respBody.CleanedBody = cleanChirp(params.Body)
+	w.WriteHeader(200)
 
 	data, err := json.Marshal(respBody)
 	if err != nil {
@@ -129,4 +128,24 @@ func middlewareCors(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func cleanChirp(chirp string) string {
+	chirpWords := strings.Split(chirp, " ")
+	var cleanChirpWords []string
+	for _, word := range chirpWords {
+		cleanChirpWords = append(cleanChirpWords, cleanWord(word))
+	}
+	return strings.Join(cleanChirpWords, " ")
+}
+
+func cleanWord(word string) string {
+	dirtyWords := []string{"kerfuffle", "sharbert", "fornax"}
+	for _, dirtyWord := range dirtyWords {
+		if strings.ToLower(word) == dirtyWord {
+			return "****"
+		}
+	}
+	return word
+
 }
