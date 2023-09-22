@@ -9,17 +9,17 @@ import (
 )
 
 type DB struct {
-	path   string
-	mux    *sync.RWMutex
-	nextId int
+	path string
+	mux  *sync.RWMutex
 }
 
 type Chirp struct {
-	Id   int
-	Body string
+	Body string `json:"body"`
+	Id   int    `json:"id"`
 }
 
 type DBStructure struct {
+	NextId int
 	Chirps map[int]Chirp
 }
 
@@ -40,12 +40,12 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 		return Chirp{}, err
 	}
 	chirp := Chirp{
-		Id:   db.nextId,
+		Id:   dbStruct.NextId,
 		Body: body,
 	}
-	dbStruct.Chirps[db.nextId] = chirp
+	dbStruct.Chirps[dbStruct.NextId] = chirp
+	dbStruct.NextId++
 	db.writeDB(dbStruct)
-	db.nextId++
 	return chirp, nil
 }
 
@@ -72,9 +72,12 @@ func (db *DB) ensureDB() error {
 		return err
 	}
 	dbStruct := DBStructure{
+		NextId: 1,
 		Chirps: make(map[int]Chirp),
 	}
-	db.writeDB(dbStruct)
+	if err := db.writeDB(dbStruct); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -115,4 +118,12 @@ func (db *DB) writeDB(dbStructure DBStructure) error {
 		return err
 	}
 	return nil
+}
+
+func (db *DB) GetNextAvailableID() (int, error) {
+	dbStruct, err := db.loadDB()
+	if err != nil {
+		return 0, err
+	}
+	return dbStruct.NextId, nil
 }

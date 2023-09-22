@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/avearmin/chirpy/internal/database"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -31,7 +32,9 @@ func main() {
 	apiRouter := chi.NewRouter()
 	apiRouter.Get("/healthz", readinessEndpointHandler)
 	apiRouter.Get("/reset", apiCfg.resetHandler)
-	apiRouter.Post("/validate_chirp", validateHandler)
+	apiRouter.Post("/chirps", postChirpsHandler)
+	apiRouter.Get("/chirps", getChirpsHandler)
+
 	router.Mount("/api", apiRouter)
 
 	adminRouter := chi.NewRouter()
@@ -81,9 +84,10 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
-func validateHandler(w http.ResponseWriter, r *http.Request) {
+func postChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Body string `json:"body"`
+		Id   int    `json:"id"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -95,19 +99,50 @@ func validateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	type returnVals struct {
-		CleanedBody string `json:"cleaned_body"`
-	}
-
-	respBody := returnVals{}
 	if len(params.Body) > 140 {
 		w.WriteHeader(400)
 		return
 	}
-	respBody.CleanedBody = cleanChirp(params.Body)
-	w.WriteHeader(200)
 
-	data, err := json.Marshal(respBody)
+	db, err := database.NewDB("./database.gob")
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	chirp, err := db.CreateChirp(cleanChirp(params.Body))
+	if err != nil {
+		log.Printf("Error writing to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	data, err := json.Marshal(chirp)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	w.Write(data)
+}
+
+func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	db, err := database.NewDB("./database.gob")
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	chirps, err := db.GetChirps()
+	if err != nil {
+		log.Printf("Error accessing database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	data, err := json.Marshal(chirps)
 	if err != nil {
 		log.Printf("Error marshalling JSON: %s", err)
 		w.WriteHeader(500)
@@ -147,5 +182,4 @@ func cleanWord(word string) string {
 		}
 	}
 	return word
-
 }
