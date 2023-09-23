@@ -18,9 +18,16 @@ type Chirp struct {
 	Id   int    `json:"id"`
 }
 
+type User struct {
+	Email string `json:"email"`
+	Id    int    `json:"id"`
+}
+
 type DBStructure struct {
-	NextId int
-	Chirps map[int]Chirp
+	NextChirpId int
+	NextUserId  int
+	Chirps      map[int]Chirp
+	Users       map[int]User
 }
 
 func NewDB(path string) (*DB, error) {
@@ -40,13 +47,28 @@ func (db *DB) CreateChirp(body string) (Chirp, error) {
 		return Chirp{}, err
 	}
 	chirp := Chirp{
-		Id:   dbStruct.NextId,
+		Id:   dbStruct.NextChirpId,
 		Body: body,
 	}
-	dbStruct.Chirps[dbStruct.NextId] = chirp
-	dbStruct.NextId++
+	dbStruct.Chirps[dbStruct.NextChirpId] = chirp
+	dbStruct.NextChirpId++
 	db.writeDB(dbStruct)
 	return chirp, nil
+}
+
+func (db *DB) CreateUser(email string) (User, error) {
+	dbStruct, err := db.loadDB()
+	if err != nil {
+		return User{}, err
+	}
+	user := User{
+		Id:    dbStruct.NextUserId,
+		Email: email,
+	}
+	dbStruct.Users[dbStruct.NextUserId] = user
+	dbStruct.NextUserId++
+	db.writeDB(dbStruct)
+	return user, nil
 }
 
 func (db *DB) GetChirp(id int) (Chirp, bool, error) {
@@ -84,8 +106,10 @@ func (db *DB) ensureDB() error {
 		return err
 	}
 	dbStruct := DBStructure{
-		NextId: 1,
-		Chirps: make(map[int]Chirp),
+		NextChirpId: 1,
+		NextUserId:  1,
+		Chirps:      make(map[int]Chirp),
+		Users:       make(map[int]User),
 	}
 	if err := db.writeDB(dbStruct); err != nil {
 		return err
@@ -130,12 +154,4 @@ func (db *DB) writeDB(dbStructure DBStructure) error {
 		return err
 	}
 	return nil
-}
-
-func (db *DB) GetNextAvailableID() (int, error) {
-	dbStruct, err := db.loadDB()
-	if err != nil {
-		return 0, err
-	}
-	return dbStruct.NextId, nil
 }
