@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/avearmin/chirpy/internal/database"
@@ -34,6 +35,7 @@ func main() {
 	apiRouter.Get("/reset", apiCfg.resetHandler)
 	apiRouter.Post("/chirps", postChirpsHandler)
 	apiRouter.Get("/chirps", getChirpsHandler)
+	apiRouter.Get("/chirps/{id}", getChirpIdHandler)
 
 	router.Mount("/api", apiRouter)
 
@@ -149,6 +151,41 @@ func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Write(data)
+}
+
+func getChirpIdHandler(w http.ResponseWriter, r *http.Request) {
+	urlParam := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(urlParam)
+	if err != nil {
+		log.Printf("Error getting ID from url: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	db, err := database.NewDB("./database.gob")
+	if err != nil {
+		log.Printf("Error accessing database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	chirp, ok, err := db.GetChirp(id)
+	if err != nil {
+		log.Printf("Error accessing database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	if !ok {
+		w.WriteHeader(404)
+		return
+	}
+	data, err := json.Marshal(chirp)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 	w.Write(data)
 }
 
