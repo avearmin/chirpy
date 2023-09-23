@@ -27,9 +27,8 @@ func runEnsureDBTest(t *testing.T) {
 	path := "./test_db.gob"
 	defer os.Remove(path)
 	db := &DB{
-		path:   path,
-		mux:    &sync.RWMutex{},
-		nextId: 0,
+		path: path,
+		mux:  &sync.RWMutex{},
 	}
 	t.Logf("Starting test for ensureDB when DB does not exist with: \"%s\", and expecting: true", path)
 	err := db.ensureDB()
@@ -56,8 +55,8 @@ func runGetChirpsTest(t *testing.T) {
 	defer os.Remove(path)
 
 	expecting := []Chirp{
-		{Id: 0, Body: "Some chirp"},
-		{Id: 1, Body: "Some other chirp"},
+		{Id: 1, Body: "Some chirp"},
+		{Id: 2, Body: "Some other chirp"},
 	}
 
 	t.Logf("Starting test for ensureDB when DB does exist with: \"%s\", and expecting: %v", path, expecting)
@@ -67,9 +66,9 @@ func runGetChirpsTest(t *testing.T) {
 		t.Error(err)
 	}
 
-	dbStruct := DBStructure{Chirps: make(map[int]Chirp)}
-	dbStruct.Chirps[0] = Chirp{Id: 0, Body: "Some chirp"}
-	dbStruct.Chirps[1] = Chirp{Id: 1, Body: "Some other chirp"}
+	dbStruct := DBStructure{NextId: 1, Chirps: make(map[int]Chirp)}
+	dbStruct.Chirps[0] = Chirp{Id: 1, Body: "Some chirp"}
+	dbStruct.Chirps[1] = Chirp{Id: 2, Body: "Some other chirp"}
 
 	err = db.writeDB(dbStruct)
 	if err != nil {
