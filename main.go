@@ -37,6 +37,7 @@ func main() {
 	apiRouter.Get("/chirps", getChirpsHandler)
 	apiRouter.Get("/chirps/{id}", getChirpIdHandler)
 	apiRouter.Post("/users", postUsersHandler)
+	apiRouter.Post("/login", postLoginHandler)
 
 	router.Mount("/api", apiRouter)
 
@@ -192,7 +193,8 @@ func getChirpIdHandler(w http.ResponseWriter, r *http.Request) {
 
 func postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email string `json:"email"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
@@ -208,7 +210,7 @@ func postUsersHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
-	user, err := db.CreateUser(params.Email)
+	user, err := db.CreateUser(params.Email, params.Password)
 	if err != nil {
 		log.Printf("Error writing to database: %s", err)
 		w.WriteHeader(500)
@@ -222,6 +224,42 @@ func postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(201)
+	w.Write(data)
+}
+
+func postLoginHandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	db, err := database.NewDB("./database.gob")
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	if err = db.ComparePasswords(params.Password, params.Email); err != nil {
+		log.Printf(err.Error())
+		w.WriteHeader(401)
+		return
+	}
+	user, _ := db.GetUser(params.Email) // Error can be ignored because if we've reached this part, clearly the user exists and a db connection can be established
+	data, err := json.Marshal(user)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
 	w.Write(data)
 }
 
