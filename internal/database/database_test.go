@@ -66,7 +66,7 @@ func runGetChirpsTest(t *testing.T) {
 		t.Error(err)
 	}
 
-	dbStruct := DBStructure{NextId: 1, Chirps: make(map[int]Chirp)}
+	dbStruct := DBStructure{NextChirpId: 1, Chirps: make(map[int]Chirp)}
 	dbStruct.Chirps[0] = Chirp{Id: 1, Body: "Some chirp"}
 	dbStruct.Chirps[1] = Chirp{Id: 2, Body: "Some other chirp"}
 

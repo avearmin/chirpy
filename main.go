@@ -5,15 +5,20 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/avearmin/chirpy/internal/database"
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
+	"github.com/joho/godotenv"
 )
 
 type apiConfig struct {
 	fileserverHits int
+	jwtSecret      string
 }
 
 func main() {
@@ -21,8 +26,11 @@ func main() {
 	const appDir = "./app"
 	const port = "8080"
 
+	godotenv.Load()
+
 	apiCfg := &apiConfig{
 		fileserverHits: 0,
+		jwtSecret:      os.Getenv("JWT_SECRET"),
 	}
 
 	router := chi.NewRouter()
@@ -37,7 +45,7 @@ func main() {
 	apiRouter.Get("/chirps", getChirpsHandler)
 	apiRouter.Get("/chirps/{id}", getChirpIdHandler)
 	apiRouter.Post("/users", postUsersHandler)
-	apiRouter.Post("/login", postLoginHandler)
+	apiRouter.Post("/login", apiCfg.postLoginHandler)
 
 	router.Mount("/api", apiRouter)
 
@@ -227,10 +235,11 @@ func postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func postLoginHandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+		Email            string `json:"email"`
+		Password         string `json:"password"`
+		ExpiresInSeconds int    `json:"expires_in_seconds"`
 	}
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
@@ -251,8 +260,31 @@ func postLoginHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(401)
 		return
 	}
+
+	type returnVal struct {
+		Email string `json:"email"`
+		Id    int    `json:"id"`
+		Token string `json:"token"`
+	}
 	user, _ := db.GetUser(params.Email) // Error can be ignored because if we've reached this part, clearly the user exists and a db connection can be established
-	data, err := json.Marshal(user)
+
+	var token string
+	if params.ExpiresInSeconds == 0 {
+		token, err = cfg.createSignedTokenWithDefaultExpiry(user.Id)
+	} else {
+		token, err = cfg.createSignedTokenWithCustomExpiry(user.Id, params.ExpiresInSeconds)
+	}
+	if err != nil {
+		log.Printf("Error creating token: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	resp := returnVal{
+		Email: user.Email,
+		Id:    user.Id,
+		Token: token,
+	}
+	data, err := json.Marshal(resp)
 	if err != nil {
 		log.Printf("Error marshalling JSON: %s", err)
 		w.WriteHeader(500)
@@ -274,6 +306,34 @@ func middlewareCors(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func (cfg *apiConfig) createSignedTokenWithDefaultExpiry(id int) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer:    "chirpy",
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+		Subject:   strconv.Itoa(id),
+	})
+	signedToken, err := token.SignedString([]byte(cfg.jwtSecret))
+	if err != nil {
+		return "", err
+	}
+	return signedToken, nil
+}
+
+func (cfg *apiConfig) createSignedTokenWithCustomExpiry(id int, durationInSeconds int) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
+		Issuer:    "chirpy",
+		IssuedAt:  jwt.NewNumericDate(time.Now()),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(durationInSeconds))),
+		Subject:   strconv.Itoa(id),
+	})
+	signedToken, err := token.SignedString([]byte(cfg.jwtSecret))
+	if err != nil {
+		return "", err
+	}
+	return signedToken, nil
 }
 
 func cleanChirp(chirp string) string {
