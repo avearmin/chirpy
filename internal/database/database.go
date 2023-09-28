@@ -37,7 +37,7 @@ type DBStructure struct {
 	NextChirpId int
 	NextUserId  int
 	Chirps      map[int]Chirp
-	Users       map[string]User
+	Users       map[int]User
 }
 
 func NewDB(path string) (*DB, error) {
@@ -72,7 +72,7 @@ func (db *DB) CreateUser(email, password string) (User, error) {
 		return User{}, err
 	}
 	normalizedEmail := normalizeEmail(email)
-	if _, exists := dbStruct.Users[normalizedEmail]; exists {
+	if _, exists := dbStruct.Users[dbStruct.NextUserId]; exists {
 		return User{}, ErrUserAlreadyExists
 	}
 	hashPass, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -84,23 +84,36 @@ func (db *DB) CreateUser(email, password string) (User, error) {
 		Email:    normalizedEmail,
 		Password: hashPass,
 	}
-	dbStruct.Users[normalizedEmail] = user
+	dbStruct.Users[dbStruct.NextUserId] = user
 	dbStruct.NextUserId++
 	db.writeDB(dbStruct)
 	return user, nil
 }
 
 func (db *DB) GetUser(email string) (User, error) {
-	dbStruct, err := db.loadDB()
+	normalizedEmail := normalizeEmail(email)
+	user, found, err := db.getUserByEmail(normalizedEmail)
 	if err != nil {
 		return User{}, err
 	}
-	normalizedEmail := normalizeEmail(email)
-	user, exists := dbStruct.Users[normalizedEmail]
-	if !exists {
+	if !found {
 		return User{}, ErrUserDoesNotExist
 	}
 	return user, nil
+}
+
+func (db *DB) getUserByEmail(email string) (User, bool, error) {
+	dbStruct, err := db.loadDB()
+	if err != nil {
+		return User{}, false, err
+	}
+	for id := range dbStruct.Users {
+		user := dbStruct.Users[id]
+		if email == user.Email {
+			return user, true, nil
+		}
+	}
+	return User{}, false, nil
 }
 
 func (db *DB) GetChirp(id int) (Chirp, bool, error) {
@@ -141,7 +154,7 @@ func (db *DB) ensureDB() error {
 		NextChirpId: 1,
 		NextUserId:  1,
 		Chirps:      make(map[int]Chirp),
-		Users:       make(map[string]User),
+		Users:       make(map[int]User),
 	}
 	if err := db.writeDB(dbStruct); err != nil {
 		return err
@@ -200,4 +213,43 @@ func (db *DB) ComparePasswords(password, withEmail string) error {
 
 func normalizeEmail(email string) string {
 	return strings.TrimSpace(strings.ToLower(email))
+}
+
+func (db *DB) UpdateUser(id int, email, password string) error {
+	dbStruct, err := db.loadDB()
+	if err != nil {
+		return err
+	}
+	_, found := dbStruct.Users[id]
+	if !found {
+		return ErrUserDoesNotExist
+	}
+	hashPass, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+	user := User{
+		Email:    email,
+		Password: hashPass,
+		Id:       id,
+	}
+	dbStruct.Users[id] = user
+	err = db.writeDB(dbStruct)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (db *DB) getUserIdByEmail(email string) (int, bool, error) {
+	dbStruct, err := db.loadDB()
+	if err != nil {
+		return 0, false, err
+	}
+	for id := range dbStruct.Users {
+		if email == dbStruct.Users[id].Email {
+			return id, true, nil
+		}
+	}
+	return 0, false, nil
 }

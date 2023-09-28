@@ -46,6 +46,7 @@ func main() {
 	apiRouter.Get("/chirps/{id}", getChirpIdHandler)
 	apiRouter.Post("/users", postUsersHandler)
 	apiRouter.Post("/login", apiCfg.postLoginHandler)
+	apiRouter.Put("/users", apiCfg.updateUserCredsHandler)
 
 	router.Mount("/api", apiRouter)
 
@@ -255,7 +256,7 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
-	if err = db.ComparePasswords(params.Password, params.Email); err != nil {
+	if err = db.ComparePasswords(params.Password, params.Email); err != nil { // TODO: Better error handling. ErrUserDoesNotExist should return a 404
 		log.Printf(err.Error())
 		w.WriteHeader(401)
 		return
@@ -266,8 +267,16 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 		Id    int    `json:"id"`
 		Token string `json:"token"`
 	}
-	user, _ := db.GetUser(params.Email) // Error can be ignored because if we've reached this part, clearly the user exists and a db connection can be established
-
+	user, err := db.GetUser(params.Email)
+	if err == database.ErrUserDoesNotExist {
+		w.WriteHeader(404)
+		return
+	}
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
 	var token string
 	if params.ExpiresInSeconds == 0 {
 		token, err = cfg.createSignedTokenWithDefaultExpiry(user.Id)
@@ -283,6 +292,65 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 		Email: user.Email,
 		Id:    user.Id,
 		Token: token,
+	}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	w.Write(data)
+}
+
+func (cfg *apiConfig) updateUserCredsHandler(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	claims := jwt.MapClaims{}
+	parsedToken, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(cfg.jwtSecret), nil
+	})
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+	id, err := parsedToken.Claims.GetSubject()
+	if err != nil {
+		log.Printf("Eror getting id from token: %s", err)
+	}
+
+	type parameters struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err = decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
+	type returnVal struct {
+		Email string `json:"email"`
+		Id    int    `json:"id"`
+	}
+	db, err := database.NewDB("./database.gob")
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	numericId, err := strconv.Atoi(id)
+	if err != nil {
+		log.Printf("Error converting stringified ID from token into type int: %s", err)
+		w.WriteHeader(500)
+	}
+	db.UpdateUser(numericId, params.Email, params.Password)
+	resp := returnVal{
+		Email: params.Email,
+		Id:    numericId,
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
