@@ -41,7 +41,7 @@ func main() {
 	apiRouter := chi.NewRouter()
 	apiRouter.Get("/healthz", readinessEndpointHandler)
 	apiRouter.Get("/reset", apiCfg.resetHandler)
-	apiRouter.Post("/chirps", postChirpsHandler)
+	apiRouter.Post("/chirps", apiCfg.postChirpsHandler)
 	apiRouter.Get("/chirps", getChirpsHandler)
 	apiRouter.Get("/chirps/{id}", getChirpIdHandler)
 	apiRouter.Post("/users", postUsersHandler)
@@ -99,7 +99,32 @@ func (cfg *apiConfig) middlewareMetricsInc(next http.Handler) http.Handler {
 	})
 }
 
-func postChirpsHandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	claims := jwt.MapClaims{}
+	parsedToken, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(cfg.jwtSecret), nil
+	})
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+	issuer, err := parsedToken.Claims.GetIssuer()
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+	if issuer != "chirpy-access" {
+		w.WriteHeader(401)
+		return
+	}
+	id, err := parsedToken.Claims.GetSubject()
+	if err != nil {
+		log.Printf("Eror getting id from token: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+
 	type parameters struct {
 		Body string `json:"body"`
 		Id   int    `json:"id"`
@@ -107,7 +132,7 @@ func postChirpsHandler(w http.ResponseWriter, r *http.Request) {
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		log.Printf("Error decoding parameters: %s", err)
 		w.WriteHeader(500)
@@ -126,7 +151,13 @@ func postChirpsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chirp, err := db.CreateChirp(cleanChirp(params.Body))
+	numericId, err := strconv.Atoi(id)
+	if err != nil {
+		log.Printf("Error converting stringified ID from token into type int: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	chirp, err := db.CreateChirp(numericId, cleanChirp(params.Body))
 	if err != nil {
 		log.Printf("Error writing to database: %s", err)
 		w.WriteHeader(500)
