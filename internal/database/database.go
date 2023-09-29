@@ -17,6 +17,8 @@ var (
 	ErrUserAlreadyExists   = errors.New("This user already exists.")
 	ErrUserDoesNotExist    = errors.New("User not found.")
 	ErrTokenAlreadyRevoked = errors.New("Token is already revoked.")
+	ErrChirpDoesNotExist   = errors.New("Chirp not found.")
+	ErrAuthorization       = errors.New("This action is not authorized.")
 )
 
 type DB struct {
@@ -69,6 +71,25 @@ func (db *DB) CreateChirp(createdBy int, body string) (Chirp, error) {
 	dbStruct.NextChirpId++
 	db.writeDB(dbStruct)
 	return chirp, nil
+}
+
+func (db *DB) DeleteChirp(chirpIdToDelete, idOfRequestingUser int) error {
+	dbStruct, err := db.loadDB()
+	if err != nil {
+		return err
+	}
+	chirp, found := dbStruct.Chirps[chirpIdToDelete]
+	if !found {
+		return ErrChirpDoesNotExist
+	}
+	if chirp.AuthorId != idOfRequestingUser {
+		return ErrAuthorization
+	}
+	delete(dbStruct.Chirps, chirpIdToDelete)
+	if err := db.writeDB(dbStruct); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (db *DB) CreateUser(email, password string) (User, error) {

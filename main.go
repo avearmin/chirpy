@@ -44,6 +44,7 @@ func main() {
 	apiRouter.Post("/chirps", apiCfg.postChirpsHandler)
 	apiRouter.Get("/chirps", getChirpsHandler)
 	apiRouter.Get("/chirps/{id}", getChirpIdHandler)
+	apiRouter.Delete("/chirps/{id}", apiCfg.deleteChirpHandler)
 	apiRouter.Post("/users", postUsersHandler)
 	apiRouter.Put("/users", apiCfg.updateUserCredsHandler)
 	apiRouter.Post("/login", apiCfg.postLoginHandler)
@@ -515,6 +516,67 @@ func (cfg *apiConfig) postRevokeHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	if err := db.RevokeRefreshToken(token); err != nil {
 		log.Printf("Something went wrong: %s", err) // We would have already checked for all possible errors this could be, so something unexpected would have to happend to cause this.
+		w.WriteHeader(500)
+		return
+	}
+	w.WriteHeader(200)
+}
+
+func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	claims := jwt.MapClaims{}
+	parsedToken, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(cfg.jwtSecret), nil
+	})
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+	issuer, err := parsedToken.Claims.GetIssuer()
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+	if issuer != "chirpy-access" {
+		w.WriteHeader(401)
+		return
+	}
+	urlParam := chi.URLParam(r, "id")
+	chirpIdToDelete, err := strconv.Atoi(urlParam)
+	if err != nil {
+		log.Printf("Error getting ID from url: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	requesterId, err := parsedToken.Claims.GetSubject()
+	if err != nil {
+		log.Printf("Eror getting id from token: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	db, err := database.NewDB("./database.gob")
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	numericRequesterId, err := strconv.Atoi(requesterId)
+	if err != nil {
+		log.Printf("Error converting stringified ID from token into type int: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	err = db.DeleteChirp(chirpIdToDelete, numericRequesterId)
+	if err == database.ErrChirpDoesNotExist {
+		w.WriteHeader(404)
+		return
+	}
+	if err == database.ErrAuthorization {
+		w.WriteHeader(403)
+		return
+	}
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
 		w.WriteHeader(500)
 		return
 	}
