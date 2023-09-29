@@ -45,8 +45,10 @@ func main() {
 	apiRouter.Get("/chirps", getChirpsHandler)
 	apiRouter.Get("/chirps/{id}", getChirpIdHandler)
 	apiRouter.Post("/users", postUsersHandler)
-	apiRouter.Post("/login", apiCfg.postLoginHandler)
 	apiRouter.Put("/users", apiCfg.updateUserCredsHandler)
+	apiRouter.Post("/login", apiCfg.postLoginHandler)
+	apiRouter.Post("/refresh", apiCfg.postRefreshHandler)
+	apiRouter.Post("/revoke", apiCfg.postRevokeHandler)
 
 	router.Mount("/api", apiRouter)
 
@@ -374,6 +376,118 @@ func (cfg *apiConfig) updateUserCredsHandler(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(200)
 	w.Write(data)
+}
+
+func (cfg *apiConfig) postRefreshHandler(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	claims := jwt.MapClaims{}
+	parsedToken, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(cfg.jwtSecret), nil
+	})
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+	issuer, err := parsedToken.Claims.GetIssuer()
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+	if issuer != "chirpy-refresh" {
+		w.WriteHeader(401)
+		return
+	}
+	db, err := database.NewDB("./database.gob")
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	revoked, err := db.IsTokenRevoked(token)
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	if revoked {
+		w.WriteHeader(401)
+		return
+	}
+
+	type returnVal struct {
+		Token string `json:"token"`
+	}
+	id, err := parsedToken.Claims.GetSubject()
+	if err != nil {
+		log.Printf("Eror getting id from token: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	numericId, err := strconv.Atoi(id)
+	if err != nil {
+		log.Printf("Error converting stringified ID from token into type int: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	newAccessToken, err := cfg.createSignedAccessToken(numericId)
+	if err != nil {
+		log.Printf("Error creating access token: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	resp := returnVal{Token: newAccessToken}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("Error marshalling JSON: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	w.Write(data)
+}
+
+func (cfg *apiConfig) postRevokeHandler(w http.ResponseWriter, r *http.Request) {
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	claims := jwt.MapClaims{}
+	parsedToken, err := jwt.ParseWithClaims(token, claims, func(token *jwt.Token) (interface{}, error) {
+		return []byte(cfg.jwtSecret), nil
+	})
+	if err != nil {
+		w.WriteHeader(401)
+		return
+	}
+	issuer, err := parsedToken.Claims.GetIssuer()
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+	if issuer != "chirpy-refresh" {
+		w.WriteHeader(401)
+		return
+	}
+	db, err := database.NewDB("./database.gob")
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	revoked, err := db.IsTokenRevoked(token)
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	if revoked {
+		w.WriteHeader(409) // We're indicating a conflict. The token they want to revoke was already revoked
+		return
+	}
+	if err := db.RevokeRefreshToken(token); err != nil {
+		log.Printf("Something went wrong: %s", err) // We would have already checked for all possible errors this could be, so something unexpected would have to happend to cause this.
+		w.WriteHeader(500)
+		return
+	}
+	w.WriteHeader(200)
 }
 
 func middlewareCors(next http.Handler) http.Handler {

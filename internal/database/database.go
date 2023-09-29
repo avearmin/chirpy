@@ -7,14 +7,16 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 // Errors raised by package database
 var (
-	ErrUserAlreadyExists = errors.New("This user already exists.")
-	ErrUserDoesNotExist  = errors.New("User not found.")
+	ErrUserAlreadyExists   = errors.New("This user already exists.")
+	ErrUserDoesNotExist    = errors.New("User not found.")
+	ErrTokenAlreadyRevoked = errors.New("Token is already revoked.")
 )
 
 type DB struct {
@@ -34,10 +36,11 @@ type User struct {
 }
 
 type DBStructure struct {
-	NextChirpId int
-	NextUserId  int
-	Chirps      map[int]Chirp
-	Users       map[int]User
+	NextChirpId          int
+	NextUserId           int
+	Chirps               map[int]Chirp
+	Users                map[int]User
+	RevokedRefreshTokens map[string]time.Time
 }
 
 func NewDB(path string) (*DB, error) {
@@ -151,10 +154,11 @@ func (db *DB) ensureDB() error {
 		return err
 	}
 	dbStruct := DBStructure{
-		NextChirpId: 1,
-		NextUserId:  1,
-		Chirps:      make(map[int]Chirp),
-		Users:       make(map[int]User),
+		NextChirpId:          1,
+		NextUserId:           1,
+		Chirps:               make(map[int]Chirp),
+		Users:                make(map[int]User),
+		RevokedRefreshTokens: make(map[string]time.Time),
 	}
 	if err := db.writeDB(dbStruct); err != nil {
 		return err
@@ -252,4 +256,32 @@ func (db *DB) getUserIdByEmail(email string) (int, bool, error) {
 		}
 	}
 	return 0, false, nil
+}
+
+func (db *DB) RevokeRefreshToken(token string) error {
+	dbStruct, err := db.loadDB()
+	if err != nil {
+		return err
+	}
+	revoked, err := db.IsTokenRevoked(token)
+	if err != nil {
+		return err
+	}
+	if revoked {
+		return ErrTokenAlreadyRevoked
+	}
+	dbStruct.RevokedRefreshTokens[token] = time.Now()
+	if err := db.writeDB(dbStruct); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (db *DB) IsTokenRevoked(token string) (bool, error) {
+	dbStruct, err := db.loadDB()
+	if err != nil {
+		return false, err
+	}
+	_, revoked := dbStruct.RevokedRefreshTokens[token]
+	return revoked, nil
 }
