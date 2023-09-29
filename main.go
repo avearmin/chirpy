@@ -238,9 +238,8 @@ func postUsersHandler(w http.ResponseWriter, r *http.Request) {
 
 func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email            string `json:"email"`
-		Password         string `json:"password"`
-		ExpiresInSeconds int    `json:"expires_in_seconds"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
 	}
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
@@ -263,9 +262,10 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type returnVal struct {
-		Email string `json:"email"`
-		Id    int    `json:"id"`
-		Token string `json:"token"`
+		Email        string `json:"email"`
+		Id           int    `json:"id"`
+		Token        string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 	user, err := db.GetUser(params.Email)
 	if err == database.ErrUserDoesNotExist {
@@ -277,21 +277,23 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
-	var token string
-	if params.ExpiresInSeconds == 0 {
-		token, err = cfg.createSignedTokenWithDefaultExpiry(user.Id)
-	} else {
-		token, err = cfg.createSignedTokenWithCustomExpiry(user.Id, params.ExpiresInSeconds)
-	}
+	accessToken, err := cfg.createSignedAccessToken(user.Id)
 	if err != nil {
-		log.Printf("Error creating token: %s", err)
+		log.Printf("Error creating access token: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	refreshToken, err := cfg.createSignedRefreshToken(user.Id)
+	if err != nil {
+		log.Printf("Error creating refresh token: %s", err)
 		w.WriteHeader(500)
 		return
 	}
 	resp := returnVal{
-		Email: user.Email,
-		Id:    user.Id,
-		Token: token,
+		Email:        user.Email,
+		Id:           user.Id,
+		Token:        accessToken,
+		RefreshToken: refreshToken,
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
@@ -314,9 +316,20 @@ func (cfg *apiConfig) updateUserCredsHandler(w http.ResponseWriter, r *http.Requ
 		w.WriteHeader(401)
 		return
 	}
+	issuer, err := parsedToken.Claims.GetIssuer()
+	if err != nil {
+		w.WriteHeader(500)
+		return
+	}
+	if issuer != "chirpy-access" {
+		w.WriteHeader(401)
+		return
+	}
 	id, err := parsedToken.Claims.GetSubject()
 	if err != nil {
 		log.Printf("Eror getting id from token: %s", err)
+		w.WriteHeader(500)
+		return
 	}
 
 	type parameters struct {
@@ -376,11 +389,11 @@ func middlewareCors(next http.Handler) http.Handler {
 	})
 }
 
-func (cfg *apiConfig) createSignedTokenWithDefaultExpiry(id int) (string, error) {
+func (cfg *apiConfig) createSignedAccessToken(id int) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Issuer:    "chirpy",
+		Issuer:    "chirpy-access",
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(1 * time.Hour)),
 		Subject:   strconv.Itoa(id),
 	})
 	signedToken, err := token.SignedString([]byte(cfg.jwtSecret))
@@ -390,11 +403,11 @@ func (cfg *apiConfig) createSignedTokenWithDefaultExpiry(id int) (string, error)
 	return signedToken, nil
 }
 
-func (cfg *apiConfig) createSignedTokenWithCustomExpiry(id int, durationInSeconds int) (string, error) {
+func (cfg *apiConfig) createSignedRefreshToken(id int) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Issuer:    "chirpy",
+		Issuer:    "chirpy-refresh",
 		IssuedAt:  jwt.NewNumericDate(time.Now()),
-		ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(durationInSeconds))),
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add((60 * 24) * time.Hour)),
 		Subject:   strconv.Itoa(id),
 	})
 	signedToken, err := token.SignedString([]byte(cfg.jwtSecret))
