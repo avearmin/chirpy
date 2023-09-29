@@ -19,6 +19,7 @@ import (
 type apiConfig struct {
 	fileserverHits int
 	jwtSecret      string
+	polkaApiKey    string
 }
 
 func main() {
@@ -31,6 +32,7 @@ func main() {
 	apiCfg := &apiConfig{
 		fileserverHits: 0,
 		jwtSecret:      os.Getenv("JWT_SECRET"),
+		polkaApiKey:    os.Getenv("POLKA_API_KEY"),
 	}
 
 	router := chi.NewRouter()
@@ -50,7 +52,7 @@ func main() {
 	apiRouter.Post("/login", apiCfg.postLoginHandler)
 	apiRouter.Post("/refresh", apiCfg.postRefreshHandler)
 	apiRouter.Post("/revoke", apiCfg.postRevokeHandler)
-	apiRouter.Post("/polka/webhooks", postPolkaWebhookHandler)
+	apiRouter.Post("/polka/webhooks", apiCfg.postPolkaWebhookHandler)
 
 	router.Mount("/api", apiRouter)
 
@@ -586,7 +588,13 @@ func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(200)
 }
 
-func postPolkaWebhookHandler(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) postPolkaWebhookHandler(w http.ResponseWriter, r *http.Request) {
+	apiKey := strings.TrimPrefix(r.Header.Get("Authorization"), "ApiKey ")
+	if cfg.polkaApiKey != apiKey {
+		w.WriteHeader(401)
+		return
+	}
+
 	type parameters struct {
 		Event string `json:"event"`
 		Data  struct {
