@@ -50,6 +50,7 @@ func main() {
 	apiRouter.Post("/login", apiCfg.postLoginHandler)
 	apiRouter.Post("/refresh", apiCfg.postRefreshHandler)
 	apiRouter.Post("/revoke", apiCfg.postRevokeHandler)
+	apiRouter.Post("/polka/webhooks", postPolkaWebhookHandler)
 
 	router.Mount("/api", apiRouter)
 
@@ -296,6 +297,7 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type returnVal struct {
+		IsChirpyRed  bool   `json:"is_chirpy_red"`
 		Email        string `json:"email"`
 		Id           int    `json:"id"`
 		Token        string `json:"token"`
@@ -324,6 +326,7 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp := returnVal{
+		IsChirpyRed:  user.IsChirpyRed,
 		Email:        user.Email,
 		Id:           user.Id,
 		Token:        accessToken,
@@ -581,6 +584,39 @@ func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	w.WriteHeader(200)
+}
+
+func postPolkaWebhookHandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Event string `json:"event"`
+		Data  struct {
+			UserId int `json:"user_id"`
+		} `json:"data"`
+	}
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		log.Printf("Error decoding parameters: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	if params.Event != "user.upgraded" {
+		w.WriteHeader(200)
+		return
+	}
+	db, err := database.NewDB("./database.gob")
+	if err != nil {
+		log.Printf("Error connecting to database: %s", err)
+		w.WriteHeader(500)
+		return
+	}
+	if err := db.UpgradeUser(params.Data.UserId); err != nil {
+		w.WriteHeader(404)
+		return
+	}
+	w.WriteHeader(200)
+
 }
 
 func middlewareCors(next http.Handler) http.Handler {

@@ -33,9 +33,10 @@ type Chirp struct {
 }
 
 type User struct {
-	Email    string `json:"email"`
-	Password []byte `json:"-"` // Should be encoded into Gob but not JSON
-	Id       int    `json:"id"`
+	Email       string `json:"email"`
+	Password    []byte `json:"-"` // Should be encoded into Gob but not JSON
+	Id          int    `json:"id"`
+	IsChirpyRed bool   `json:"is_chirpy_red"`
 }
 
 type DBStructure struct {
@@ -106,9 +107,10 @@ func (db *DB) CreateUser(email, password string) (User, error) {
 		return User{}, err
 	}
 	user := User{
-		Id:       dbStruct.NextUserId,
-		Email:    normalizedEmail,
-		Password: hashPass,
+		Id:          dbStruct.NextUserId,
+		Email:       normalizedEmail,
+		Password:    hashPass,
+		IsChirpyRed: false,
 	}
 	dbStruct.Users[dbStruct.NextUserId] = user
 	dbStruct.NextUserId++
@@ -247,7 +249,7 @@ func (db *DB) UpdateUser(id int, email, password string) error {
 	if err != nil {
 		return err
 	}
-	_, found := dbStruct.Users[id]
+	user, found := dbStruct.Users[id]
 	if !found {
 		return ErrUserDoesNotExist
 	}
@@ -255,12 +257,13 @@ func (db *DB) UpdateUser(id int, email, password string) error {
 	if err != nil {
 		return err
 	}
-	user := User{
-		Email:    email,
-		Password: hashPass,
-		Id:       id,
+	updatedUser := User{
+		Email:       email,
+		Password:    hashPass,
+		Id:          id,
+		IsChirpyRed: user.IsChirpyRed,
 	}
-	dbStruct.Users[id] = user
+	dbStruct.Users[id] = updatedUser
 	err = db.writeDB(dbStruct)
 	if err != nil {
 		return err
@@ -307,4 +310,21 @@ func (db *DB) IsTokenRevoked(token string) (bool, error) {
 	}
 	_, revoked := dbStruct.RevokedRefreshTokens[token]
 	return revoked, nil
+}
+
+func (db *DB) UpgradeUser(id int) error {
+	dbStruct, err := db.loadDB()
+	if err != nil {
+		return err
+	}
+	user, found := dbStruct.Users[id]
+	if !found {
+		return ErrUserDoesNotExist
+	}
+	user.IsChirpyRed = true
+	dbStruct.Users[id] = user
+	if err := db.writeDB(dbStruct); err != nil {
+		return err
+	}
+	return nil
 }
