@@ -186,12 +186,30 @@ func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
-	chirps, err := db.GetChirps()
-	if err != nil {
-		log.Printf("Error accessing database: %s", err)
-		w.WriteHeader(500)
-		return
+	id := r.URL.Query().Get("author_id")
+	var chirps []database.Chirp
+	if id != "" {
+		numericId, err := strconv.Atoi(id)
+		if err != nil {
+			log.Printf("Error converting stringified ID from token into type int: %s", err)
+			w.WriteHeader(500)
+			return
+		}
+		chirps, err = db.GetChirpsFromId(numericId)
+		if err != nil {
+			log.Printf("Error accessing database: %s", err)
+			w.WriteHeader(500)
+			return
+		}
+	} else {
+		chirps, err = db.GetChirps()
+		if err != nil {
+			log.Printf("Error accessing database: %s", err)
+			w.WriteHeader(500)
+			return
+		}
 	}
+
 	data, err := json.Marshal(chirps)
 	if err != nil {
 		log.Printf("Error marshalling JSON: %s", err)
