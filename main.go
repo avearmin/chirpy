@@ -186,6 +186,7 @@ func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(500)
 		return
 	}
+	sort := r.URL.Query().Get("sort")
 	id := r.URL.Query().Get("author_id")
 	var chirps []database.Chirp
 	if id != "" {
@@ -195,14 +196,14 @@ func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(500)
 			return
 		}
-		chirps, err = db.GetChirpsFromId(numericId)
+		chirps, err = db.GetChirpsFromId(numericId, sort)
 		if err != nil {
 			log.Printf("Error accessing database: %s", err)
 			w.WriteHeader(500)
 			return
 		}
 	} else {
-		chirps, err = db.GetChirps()
+		chirps, err = db.GetChirps(sort)
 		if err != nil {
 			log.Printf("Error accessing database: %s", err)
 			w.WriteHeader(500)

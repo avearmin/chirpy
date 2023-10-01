@@ -1,6 +1,7 @@
 package database
 
 import (
+	"cmp"
 	"encoding/gob"
 	"errors"
 	"io/fs"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"slices"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -156,7 +159,7 @@ func (db *DB) GetChirp(id int) (Chirp, bool, error) {
 	return found, true, nil
 }
 
-func (db *DB) GetChirps() ([]Chirp, error) {
+func (db *DB) GetChirps(order string) ([]Chirp, error) {
 	dbStruct, err := db.loadDB()
 	if err != nil {
 		return nil, err
@@ -167,10 +170,11 @@ func (db *DB) GetChirps() ([]Chirp, error) {
 		keys[i] = dbStruct.Chirps[id]
 		i++
 	}
+	sortChirps(keys, order)
 	return keys, nil
 }
 
-func (db *DB) GetChirpsFromId(authorId int) ([]Chirp, error) {
+func (db *DB) GetChirpsFromId(authorId int, order string) ([]Chirp, error) {
 	dbStruct, err := db.loadDB()
 	if err != nil {
 		return nil, err
@@ -184,7 +188,31 @@ func (db *DB) GetChirpsFromId(authorId int) ([]Chirp, error) {
 		}
 		i++
 	}
+	sortChirps(keys, order)
 	return keys, nil
+}
+
+func sortChirps(s []Chirp, order string) {
+	if order == "asc" {
+		ascSort(s)
+		return
+	}
+	if order == "desc" {
+		descSort(s)
+		return
+	}
+}
+
+func ascSort(s []Chirp) {
+	slices.SortStableFunc(s, func(a, b Chirp) int {
+		return cmp.Compare(a.Id, b.Id)
+	})
+}
+
+func descSort(s []Chirp) {
+	slices.SortStableFunc(s, func(a, b Chirp) int {
+		return cmp.Compare(b.Id, a.Id)
+	})
 }
 
 func (db *DB) ensureDB() error {
