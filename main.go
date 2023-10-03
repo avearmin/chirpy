@@ -150,8 +150,7 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 
@@ -182,8 +181,7 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	sort := r.URL.Query().Get("sort")
@@ -271,8 +269,7 @@ func postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	user, err := db.CreateUser(params.Email, params.Password)
@@ -307,8 +304,7 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	if err = db.ComparePasswords(params.Password, params.Email); err != nil { // TODO: Better error handling. ErrUserDoesNotExist should return a 404
@@ -330,8 +326,7 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	accessToken, err := cfg.createSignedAccessToken(user.Id)
@@ -409,8 +404,7 @@ func (cfg *apiConfig) updateUserCredsHandler(w http.ResponseWriter, r *http.Requ
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	numericId, err := strconv.Atoi(id)
@@ -455,14 +449,12 @@ func (cfg *apiConfig) postRefreshHandler(w http.ResponseWriter, r *http.Request)
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	revoked, err := db.IsTokenRevoked(token)
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	if revoked {
@@ -524,14 +516,12 @@ func (cfg *apiConfig) postRevokeHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	revoked, err := db.IsTokenRevoked(token)
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	if revoked {
@@ -580,8 +570,7 @@ func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, r *http.Request)
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	numericRequesterId, err := strconv.Atoi(requesterId)
@@ -600,8 +589,7 @@ func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	w.WriteHeader(200)
@@ -634,8 +622,7 @@ func (cfg *apiConfig) postPolkaWebhookHandler(w http.ResponseWriter, r *http.Req
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		log.Printf("Error connecting to database: %s", err)
-		w.WriteHeader(500)
+		respondWithDatabaseError(w, err)
 		return
 	}
 	if err := db.UpgradeUser(params.Data.UserId); err != nil {
