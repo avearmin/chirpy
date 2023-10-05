@@ -115,7 +115,7 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	issuer, err := parsedToken.Claims.GetIssuer()
 	if err != nil {
-		w.WriteHeader(500)
+		respondParseTokenError(w, err)
 		return
 	}
 	if issuer != "chirpy-access" {
@@ -124,8 +124,7 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	id, err := parsedToken.Claims.GetSubject()
 	if err != nil {
-		log.Printf("Eror getting id from token: %s", err)
-		w.WriteHeader(500)
+		respondParseTokenError(w, err)
 		return
 	}
 
@@ -138,8 +137,7 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 	params := parameters{}
 	err = decoder.Decode(&params)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondParamsDecodingError(w, err)
 		return
 	}
 
@@ -150,27 +148,24 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 
 	numericId, err := strconv.Atoi(id)
 	if err != nil {
-		log.Printf("Error converting stringified ID from token into type int: %s", err)
-		w.WriteHeader(500)
+		respondStrconvError(w, err)
 		return
 	}
 	chirp, err := db.CreateChirp(numericId, cleanChirp(params.Body))
 	if err != nil {
-		log.Printf("Error writing to database: %s", err)
-		w.WriteHeader(500)
+		respondDataWriteError(w, err)
 		return
 	}
 
 	data, err := json.Marshal(chirp)
 	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
+		respondJSONMarshalError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -181,7 +176,7 @@ func (cfg *apiConfig) postChirpsHandler(w http.ResponseWriter, r *http.Request) 
 func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	sort := r.URL.Query().Get("sort")
@@ -190,29 +185,25 @@ func getChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	if id != "" {
 		numericId, err := strconv.Atoi(id)
 		if err != nil {
-			log.Printf("Error converting stringified ID from token into type int: %s", err)
-			w.WriteHeader(500)
+			respondStrconvError(w, err)
 			return
 		}
 		chirps, err = db.GetChirpsFromId(numericId, sort)
 		if err != nil {
-			log.Printf("Error accessing database: %s", err)
-			w.WriteHeader(500)
+			respondDataFetchError(w, err)
 			return
 		}
 	} else {
 		chirps, err = db.GetChirps(sort)
 		if err != nil {
-			log.Printf("Error accessing database: %s", err)
-			w.WriteHeader(500)
+			respondDataFetchError(w, err)
 			return
 		}
 	}
 
 	data, err := json.Marshal(chirps)
 	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
+		respondJSONMarshalError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -223,20 +214,17 @@ func getChirpIdHandler(w http.ResponseWriter, r *http.Request) {
 	urlParam := chi.URLParam(r, "id")
 	id, err := strconv.Atoi(urlParam)
 	if err != nil {
-		log.Printf("Error getting ID from url: %s", err)
-		w.WriteHeader(500)
+		respondParseURLError(w, err)
 		return
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		log.Printf("Error accessing database: %s", err)
-		w.WriteHeader(500)
+		respondDatabaseError(w, err)
 		return
 	}
 	chirp, ok, err := db.GetChirp(id)
 	if err != nil {
-		log.Printf("Error accessing database: %s", err)
-		w.WriteHeader(500)
+		respondDataFetchError(w, err)
 		return
 	}
 	if !ok {
@@ -245,8 +233,7 @@ func getChirpIdHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := json.Marshal(chirp)
 	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
+		respondJSONMarshalError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -263,25 +250,22 @@ func postUsersHandler(w http.ResponseWriter, r *http.Request) {
 	params := parameters{}
 	err := decoder.Decode(&params)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondParamsDecodingError(w, err)
 		return
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	user, err := db.CreateUser(params.Email, params.Password)
 	if err != nil {
-		log.Printf("Error writing to database: %s", err)
-		w.WriteHeader(500)
+		respondDataWriteError(w, err)
 		return
 	}
 	data, err := json.Marshal(user)
 	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
+		respondJSONMarshalError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -298,13 +282,12 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 	params := parameters{}
 	err := decoder.Decode(&params)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondParamsDecodingError(w, err)
 		return
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	if err = db.ComparePasswords(params.Password, params.Email); err != nil { // TODO: Better error handling. ErrUserDoesNotExist should return a 404
@@ -326,19 +309,17 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	accessToken, err := cfg.createSignedAccessToken(user.Id)
 	if err != nil {
-		log.Printf("Error creating access token: %s", err)
-		w.WriteHeader(500)
+		respondAccessTokenError(w, err)
 		return
 	}
 	refreshToken, err := cfg.createSignedRefreshToken(user.Id)
 	if err != nil {
-		log.Printf("Error creating refresh token: %s", err)
-		w.WriteHeader(500)
+		respondRefreshTokenError(w, err)
 		return
 	}
 	resp := returnVal{
@@ -350,8 +331,7 @@ func (cfg *apiConfig) postLoginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
+		respondJSONMarshalError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -371,7 +351,7 @@ func (cfg *apiConfig) updateUserCredsHandler(w http.ResponseWriter, r *http.Requ
 	}
 	issuer, err := parsedToken.Claims.GetIssuer()
 	if err != nil {
-		w.WriteHeader(500)
+		respondParseTokenError(w, err)
 		return
 	}
 	if issuer != "chirpy-access" {
@@ -380,8 +360,7 @@ func (cfg *apiConfig) updateUserCredsHandler(w http.ResponseWriter, r *http.Requ
 	}
 	id, err := parsedToken.Claims.GetSubject()
 	if err != nil {
-		log.Printf("Eror getting id from token: %s", err)
-		w.WriteHeader(500)
+		respondParseTokenError(w, err)
 		return
 	}
 
@@ -393,8 +372,7 @@ func (cfg *apiConfig) updateUserCredsHandler(w http.ResponseWriter, r *http.Requ
 	params := parameters{}
 	err = decoder.Decode(&params)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondParamsDecodingError(w, err)
 		return
 	}
 
@@ -404,13 +382,12 @@ func (cfg *apiConfig) updateUserCredsHandler(w http.ResponseWriter, r *http.Requ
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	numericId, err := strconv.Atoi(id)
 	if err != nil {
-		log.Printf("Error converting stringified ID from token into type int: %s", err)
-		w.WriteHeader(500)
+		respondStrconvError(w, err)
 	}
 	db.UpdateUser(numericId, params.Email, params.Password)
 	resp := returnVal{
@@ -419,8 +396,7 @@ func (cfg *apiConfig) updateUserCredsHandler(w http.ResponseWriter, r *http.Requ
 	}
 	data, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
+		respondJSONMarshalError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -440,7 +416,7 @@ func (cfg *apiConfig) postRefreshHandler(w http.ResponseWriter, r *http.Request)
 	}
 	issuer, err := parsedToken.Claims.GetIssuer()
 	if err != nil {
-		w.WriteHeader(500)
+		respondParseTokenError(w, err)
 		return
 	}
 	if issuer != "chirpy-refresh" {
@@ -449,12 +425,12 @@ func (cfg *apiConfig) postRefreshHandler(w http.ResponseWriter, r *http.Request)
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	revoked, err := db.IsTokenRevoked(token)
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	if revoked {
@@ -467,27 +443,23 @@ func (cfg *apiConfig) postRefreshHandler(w http.ResponseWriter, r *http.Request)
 	}
 	id, err := parsedToken.Claims.GetSubject()
 	if err != nil {
-		log.Printf("Eror getting id from token: %s", err)
-		w.WriteHeader(500)
+		respondParseTokenError(w, err)
 		return
 	}
 	numericId, err := strconv.Atoi(id)
 	if err != nil {
-		log.Printf("Error converting stringified ID from token into type int: %s", err)
-		w.WriteHeader(500)
+		respondStrconvError(w, err)
 		return
 	}
 	newAccessToken, err := cfg.createSignedAccessToken(numericId)
 	if err != nil {
-		log.Printf("Error creating access token: %s", err)
-		w.WriteHeader(500)
+		respondAccessTokenError(w, err)
 		return
 	}
 	resp := returnVal{Token: newAccessToken}
 	data, err := json.Marshal(resp)
 	if err != nil {
-		log.Printf("Error marshalling JSON: %s", err)
-		w.WriteHeader(500)
+		respondJSONMarshalError(w, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -507,7 +479,7 @@ func (cfg *apiConfig) postRevokeHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	issuer, err := parsedToken.Claims.GetIssuer()
 	if err != nil {
-		w.WriteHeader(500)
+		respondParseTokenError(w, err)
 		return
 	}
 	if issuer != "chirpy-refresh" {
@@ -516,12 +488,12 @@ func (cfg *apiConfig) postRevokeHandler(w http.ResponseWriter, r *http.Request) 
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	revoked, err := db.IsTokenRevoked(token)
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	if revoked {
@@ -529,8 +501,7 @@ func (cfg *apiConfig) postRevokeHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := db.RevokeRefreshToken(token); err != nil {
-		log.Printf("Something went wrong: %s", err) // We would have already checked for all possible errors this could be, so something unexpected would have to happend to cause this.
-		w.WriteHeader(500)
+		respondUnexpectedError(w, err) // We would have already checked for all possible errors this could be, so something unexpected would have to happend to cause this.
 		return
 	}
 	w.WriteHeader(200)
@@ -548,7 +519,7 @@ func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, r *http.Request)
 	}
 	issuer, err := parsedToken.Claims.GetIssuer()
 	if err != nil {
-		w.WriteHeader(500)
+		respondParseTokenError(w, err)
 		return
 	}
 	if issuer != "chirpy-access" {
@@ -556,27 +527,28 @@ func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	urlParam := chi.URLParam(r, "id")
+	if err != nil {
+		respondParseURLError(w, err)
+		return
+	}
 	chirpIdToDelete, err := strconv.Atoi(urlParam)
 	if err != nil {
-		log.Printf("Error getting ID from url: %s", err)
-		w.WriteHeader(500)
+		respondStrconvError(w, err)
 		return
 	}
 	requesterId, err := parsedToken.Claims.GetSubject()
 	if err != nil {
-		log.Printf("Eror getting id from token: %s", err)
-		w.WriteHeader(500)
+		respondParseTokenError(w, err)
 		return
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	numericRequesterId, err := strconv.Atoi(requesterId)
 	if err != nil {
-		log.Printf("Error converting stringified ID from token into type int: %s", err)
-		w.WriteHeader(500)
+		respondStrconvError(w, err)
 		return
 	}
 	err = db.DeleteChirp(chirpIdToDelete, numericRequesterId)
@@ -589,7 +561,7 @@ func (cfg *apiConfig) deleteChirpHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	w.WriteHeader(200)
@@ -612,8 +584,7 @@ func (cfg *apiConfig) postPolkaWebhookHandler(w http.ResponseWriter, r *http.Req
 	params := parameters{}
 	err := decoder.Decode(&params)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondParamsDecodingError(w, err)
 		return
 	}
 	if params.Event != "user.upgraded" {
@@ -622,7 +593,7 @@ func (cfg *apiConfig) postPolkaWebhookHandler(w http.ResponseWriter, r *http.Req
 	}
 	db, err := database.NewDB("./database.gob")
 	if err != nil {
-		respondWithDatabaseError(w, err)
+		respondDatabaseError(w, err)
 		return
 	}
 	if err := db.UpgradeUser(params.Data.UserId); err != nil {
